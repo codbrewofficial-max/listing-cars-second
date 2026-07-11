@@ -8,8 +8,6 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default("*"),
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL wajib diisi"),
-  // PENTING: jangan pakai z.coerce.boolean() di sini — Boolean("false") === true di JS,
-  // jadi string "false" dari .env akan ke-coerce jadi true. Parse manual sebagai berikut:
   PGSSL: z
     .string()
     .optional()

@@ -29,6 +29,7 @@
     "pino-http": "^10.1.0",
     "sharp": "^0.33.4",
     "uuid": "^9.0.1",
+    "ws": "^8.17.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -40,6 +41,7 @@
     "@types/node": "^20.12.12",
     "@types/pg": "^8.11.6",
     "@types/uuid": "^9.0.8",
+    "@types/ws": "^8.5.10",
     "node-pg-migrate": "^7.6.1",
     "pino-pretty": "^11.0.0",
     "tsx": "^4.10.5",
