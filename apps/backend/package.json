@@ -1,0 +1,48 @@
+{
+  "name": "lcs-backend",
+  "version": "0.1.0",
+  "description": "Backend MVP - Sistem Jual Beli Kendaraan Second dan Suku Cadang",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "migrate:up": "node-pg-migrate up -m src/db/migrations -j js",
+    "migrate:down": "node-pg-migrate down -m src/db/migrations -j js",
+    "migrate:create": "node-pg-migrate create -m src/db/migrations -j js",
+    "seed:superadmin": "tsx src/db/seed/superadmin.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@getbrevo/brevo": "^2.2.0",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.11.5",
+    "pino": "^9.1.0",
+    "pino-http": "^10.1.0",
+    "sharp": "^0.33.4",
+    "uuid": "^9.0.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.12.12",
+    "@types/pg": "^8.11.6",
+    "@types/uuid": "^9.0.8",
+    "node-pg-migrate": "^7.6.1",
+    "pino-pretty": "^11.0.0",
+    "tsx": "^4.10.5",
+    "typescript": "^5.4.5"
+  }
+}
