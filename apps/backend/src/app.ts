@@ -25,6 +25,12 @@ import {
 import chatRoutes from "./modules/chat/chat.routes";
 import transactionsRoutes, { myTransactionsRouter } from "./modules/transactions/transactions.routes";
 
+import leadsRoutes from "./modules/leads/leads.routes";
+import articlesRoutes, { adminArticlesRouter } from "./modules/articles/articles.routes";
+import notificationsRoutes from "./modules/notifications/notifications.routes";
+import insightsRoutes from "./modules/insights/insights.routes";
+import auditLogRoutes from "./modules/audit-log/audit-log.routes";
+
 export function createApp() {
   const app = express();
 
@@ -73,8 +79,23 @@ export function createApp() {
   app.use("/api/transactions", transactionsRoutes);
   app.use("/api/me/transactions", myTransactionsRouter);
 
-  // ---- Modul pendukung (Leads, Article, Notifikasi, Tracking Insight, Audit Log read)
-  //      akan didaftarkan di sini pada chat berikutnya, mengikuti pola yang sama. ----
+  // ---- Modul pendukung (Chat 3): Leads, Article, Notifikasi, Tracking Insight, Audit Log ----
+
+  // Leads System (§7)
+  app.use("/api/leads", leadsRoutes);
+
+  // Article Management (§8)
+  app.use("/api/articles", articlesRoutes);
+  app.use("/api/admin/articles", adminArticlesRouter);
+
+  // Notifikasi Realtime (§10) — REST; realtime utama via WS /ws/notifications (didaftarkan di server.ts)
+  app.use("/api/notifications", notificationsRoutes);
+
+  // Tracking Insight (§11)
+  app.use("/api/insights", insightsRoutes);
+
+  // Audit Log (§12) — query endpoint; logic INSERT sudah ada sejak Chat 1 & 2 (recordAuditLog)
+  app.use("/api/audit-logs", auditLogRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

@@ -14,6 +14,7 @@ import {
   scheduleVisitRequest,
   updateVisitRequestStatus,
 } from "./visits.repository";
+import { createNotificationService } from "../notifications/notifications.service";
 
 /**
  * Default MVP (04-catatan-open-decision.md §3): hanya Admin/Super Admin yang boleh
@@ -105,7 +106,15 @@ export async function scheduleVisitRequestService(params: {
     metadata: { scheduled_at: params.scheduledAt, location: params.location },
   });
 
-  // TODO(notifikasi): trigger notifikasi ke customer saat modul Notifikasi Realtime dibangun.
+  // Trigger notifikasi (Modul 3): beri tahu customer bahwa jadwal kunjungan dikonfirmasi.
+  await createNotificationService({
+    userId: existing.customer_id,
+    type: "visit_status",
+    title: "Jadwal kunjungan dikonfirmasi",
+    body: `Kunjungan Anda dijadwalkan pada ${params.scheduledAt} di ${params.location}`,
+    relatedEntity: "visit_requests",
+    relatedId: params.id,
+  });
 
   return visitRequest;
 }
@@ -136,6 +145,18 @@ export async function updateVisitRequestStatusService(params: {
 
   // Sesuai 04-catatan-open-decision.md §3 & 05-api-endpoints-mvp.md §4:
   // status visit_request TIDAK otomatis mengubah status listing kendaraan (belum diputuskan).
+
+  // Trigger notifikasi (Modul 3): beri tahu customer saat kunjungan selesai/dibatalkan.
+  if (params.status === "completed" || params.status === "cancelled") {
+    await createNotificationService({
+      userId: existing.customer_id,
+      type: "visit_status",
+      title: params.status === "completed" ? "Kunjungan selesai" : "Kunjungan dibatalkan",
+      body: params.notes,
+      relatedEntity: "visit_requests",
+      relatedId: params.id,
+    });
+  }
 
   return visitRequest;
 }

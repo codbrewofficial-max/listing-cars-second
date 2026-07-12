@@ -15,6 +15,7 @@ import {
   markMessagesRead,
 } from "./chat.repository";
 import { emitConversationClosed, emitMessageNew, emitMessageRead } from "./chat.events";
+import { createNotificationService } from "../notifications/notifications.service";
 
 /**
  * Modul 4 — mekanisme assignment Admin: General Queue (keputusan final).
@@ -150,6 +151,23 @@ export async function sendMessageService(params: {
   });
 
   emitMessageNew({ conversation_id: params.conversationId, message });
+
+  // Trigger notifikasi (Modul 3): beri tahu partisipan LAIN (bukan pengirim) bahwa
+  // ada pesan baru masuk. Notifikasi persisten (tersimpan) + push realtime kalau online.
+  const participants = await listParticipants(params.conversationId);
+  const recipientIds = participants.map((p) => p.user_id).filter((id) => id !== params.senderId);
+  await Promise.all(
+    recipientIds.map((userId) =>
+      createNotificationService({
+        userId,
+        type: "chat_message",
+        title: "Pesan baru masuk",
+        body: params.content.slice(0, 200),
+        relatedEntity: "conversations",
+        relatedId: params.conversationId,
+      })
+    )
+  );
 
   return message;
 }

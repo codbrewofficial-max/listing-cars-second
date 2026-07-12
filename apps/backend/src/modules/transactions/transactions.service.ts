@@ -3,6 +3,8 @@ import { recordAuditLog } from "../audit-log/audit-log.service";
 import { findMediaAssetById } from "../media/media.repository";
 import { findVehicleById } from "../vehicles/vehicles.repository";
 import { findSparePartById } from "../spare-parts/spare-parts.repository";
+import { createNotificationService, createNotificationForManyService } from "../notifications/notifications.service";
+import { listUsers } from "../auth/auth.repository";
 import {
   findTransactionById,
   insertTransaction,
@@ -27,6 +29,11 @@ import {
  *
  * payment_gateway_ref sengaja tidak pernah diisi/dipakai logic apa pun di modul ini (reserved Fase 2).
  */
+
+async function getOwnerUserIds(): Promise<string[]> {
+  const { data } = await listUsers({ role: "owner", isActive: true, limit: 100, offset: 0 });
+  return data.map((u) => u.id);
+}
 
 async function getProductForTransaction(productType: string, productId: string) {
   if (productType === "vehicle") {
@@ -192,6 +199,28 @@ export async function verifyPaymentService(params: {
     metadata: { approved: params.approved, notes: params.notes, resulting_status: updated?.status },
   });
 
+  // Trigger notifikasi (Modul 3): beri tahu buyer status pembayaran, dan beri tahu
+  // seluruh Owner bahwa ada transaksi baru masuk approval queue (funds_held).
+  if (params.approved && updated) {
+    await createNotificationService({
+      userId: transaction.buyer_id,
+      type: "transaction_status",
+      title: "Pembayaran terverifikasi",
+      body: "Dana Anda kini berstatus tertahan (funds_held), menunggu proses serah terima.",
+      relatedEntity: "transactions",
+      relatedId: params.transactionId,
+    });
+    const ownerIds = await getOwnerUserIds();
+    await createNotificationForManyService({
+      userIds: ownerIds,
+      type: "transaction_status",
+      title: "Transaksi menunggu approval release dana",
+      body: `Transaksi ${params.transactionId} kini berstatus funds_held.`,
+      relatedEntity: "transactions",
+      relatedId: params.transactionId,
+    });
+  }
+
   return updated;
 }
 
@@ -229,6 +258,16 @@ export async function releaseTransactionService(params: {
     metadata: { notes: params.notes, amount: transaction.amount },
   });
 
+  // Trigger notifikasi (Modul 3): beri tahu buyer dana sudah dilepas ke penjual.
+  await createNotificationService({
+    userId: transaction.buyer_id,
+    type: "transaction_status",
+    title: "Transaksi selesai",
+    body: "Dana telah dilepas ke penjual. Terima kasih telah bertransaksi.",
+    relatedEntity: "transactions",
+    relatedId: params.transactionId,
+  });
+
   return updated;
 }
 
@@ -264,6 +303,28 @@ export async function disputeTransactionService(params: {
     targetEntity: "transactions",
     targetId: params.transactionId,
     metadata: { dispute_reason: params.disputeReason },
+  });
+
+  // Trigger notifikasi (Modul 3): beri tahu buyer (kalau bukan dia sendiri yang mengajukan)
+  // dan seluruh Owner, karena keputusan final dispute ada di tangan Owner.
+  if (transaction.buyer_id !== params.actor.id) {
+    await createNotificationService({
+      userId: transaction.buyer_id,
+      type: "transaction_status",
+      title: "Transaksi Anda ditandai bermasalah",
+      body: params.disputeReason,
+      relatedEntity: "transactions",
+      relatedId: params.transactionId,
+    });
+  }
+  const ownerIds = await getOwnerUserIds();
+  await createNotificationForManyService({
+    userIds: ownerIds,
+    type: "transaction_status",
+    title: "Transaksi disputed, menunggu keputusan Owner",
+    body: params.disputeReason,
+    relatedEntity: "transactions",
+    relatedId: params.transactionId,
   });
 
   return updated;
@@ -316,6 +377,21 @@ export async function resolveTransactionService(params: {
     metadata: { resolution: params.resolution, notes: params.notes },
   });
 
+  // Trigger notifikasi (Modul 3): beri tahu buyer keputusan final dispute.
+  const resolutionLabel: Record<typeof params.resolution, string> = {
+    released: "Dana dilepas ke penjual",
+    refunded: "Dana akan dikembalikan (refund manual, Admin/Owner akan menghubungi Anda)",
+    cancelled: "Transaksi dibatalkan",
+  };
+  await createNotificationService({
+    userId: transaction.buyer_id,
+    type: "transaction_status",
+    title: "Dispute transaksi Anda sudah diputuskan",
+    body: `${resolutionLabel[params.resolution]}. Catatan: ${params.notes}`,
+    relatedEntity: "transactions",
+    relatedId: params.transactionId,
+  });
+
   // Catatan (04-catatan-open-decision.md §7 & 02c belum menetapkan alur refund detail):
   // hasil 'refunded' hanya dicatat statusnya di sini. Proses transfer balik dana ke pembeli
   // tetap MANUAL di luar sistem (Admin/Owner koordinasi langsung), sesuai 05-api-endpoints-mvp.md §15.
@@ -352,6 +428,18 @@ export async function cancelTransactionService(params: {
     targetId: params.transactionId,
     metadata: { reason: params.reason },
   });
+
+  // Trigger notifikasi (Modul 3): beri tahu buyer kalau yang membatalkan adalah Admin (bukan dirinya).
+  if (transaction.buyer_id !== params.actor.id) {
+    await createNotificationService({
+      userId: transaction.buyer_id,
+      type: "transaction_status",
+      title: "Transaksi Anda dibatalkan",
+      body: params.reason,
+      relatedEntity: "transactions",
+      relatedId: params.transactionId,
+    });
+  }
 
   return updated;
 }

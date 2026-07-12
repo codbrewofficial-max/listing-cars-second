@@ -1,33 +1,46 @@
-# LCS Backend — Fondasi (Chat 1) + Fitur Unggulan (Chat 2)
+# LCS Backend — MVP Lengkap (Chat 1 + Chat 2 + Chat 3)
 
 Backend MVP untuk **Sistem Jual Beli Kendaraan Second dan Suku Cadang**, dibangun dengan
 Node.js + TypeScript + Express + PostgreSQL (raw `pg`, migration via `node-pg-migrate`).
 
-**Chat 1** mengerjakan 4 modul fondasi:
+Ini adalah **chat terakhir** dari rangkaian pembangunan backend MVP. Setelah chat ini,
+backend mencakup **seluruh endpoint** di `05-api-endpoints-mvp.md`.
+
+**Chat 1** — 4 modul fondasi:
 1. Setup Project & Infrastruktur
-2. Authentication & User Management (sesuai `02c-addendum-auth-email-brevo.md`)
+2. Authentication & User Management (`02c-addendum-auth-email-brevo.md`)
 3. Platform Settings
 4. Media Library (Cloudflare R2 + sharp/WebP)
 
-**Chat 2 (chat ini)** mengerjakan 5 modul fitur unggulan / inti bisnis:
+**Chat 2** — 5 modul fitur unggulan / inti bisnis:
 1. Product Management — Kendaraan (`vehicles`)
 2. Product Management — Suku Cadang (`spare_parts`)
 3. Inspeksi Dokumen & Kunjungan Fisik (`visit_requests`, `visit_photos`)
 4. Chat Realtime (REST + WebSocket `/ws/chat`)
 5. Transaksi & Payment Manual / Escrow-lite (`transactions`)
 
-Modul pendukung (Leads, Article, Notifikasi Realtime, Tracking Insight, Audit Log read
-endpoints) akan dibangun di chat berikutnya, mengikuti struktur modular yang sama
-(`src/modules/<nama-modul>`).
+**Chat 3 (chat ini)** — 5 modul pendukung yang menyelesaikan seluruh cakupan MVP:
+1. Leads System (`leads`)
+2. Article Management (`articles`) — CRUD + SEO metadata + slug unik
+3. Notifikasi Realtime (`notifications`) — REST + WebSocket `/ws/notifications`, **di-trigger
+   otomatis** dari event modul lain (chat, kunjungan, transaksi, verifikasi dokumen)
+4. Tracking Insight (`GET /api/insights/*`) — data internal (leads, transaksi, artikel);
+   integrasi GTM/GA4 tetap murni client-side
+5. Audit Log — endpoint query (`GET /api/audit-logs`); logic tulis (`recordAuditLog`) sudah
+   ada sejak Chat 1/2, di chat ini juga ditambahkan ke 3 titik yang sebelumnya terlewat
+   (lihat §"Perbaikan Audit Log" di bawah)
 
 ---
 
 ## 1. Prasyarat
 
 * Node.js 20+
-* PostgreSQL sudah jalan (kamu sudah punya lewat pgAdmin/instalasi lokal — buat database kosong dulu, misal `lcs_db`)
-* Akun Cloudflare R2 (untuk Media Library) — opsional untuk sekadar menjalankan Auth/Settings, tapi wajib untuk upload media (dipakai juga oleh foto kendaraan, foto kunjungan, bukti pembayaran)
-* Akun Brevo (untuk kirim email verifikasi/reset password) — kalau `BREVO_API_KEY` kosong, pengiriman email akan gagal (tercatat sebagai `failed` di `email_logs`), endpoint lain tetap berjalan normal
+* PostgreSQL sudah jalan (lewat pgAdmin/instalasi lokal — buat database kosong dulu, misal `lcs_db`)
+* Akun Cloudflare R2 (untuk Media Library) — wajib untuk upload media (foto kendaraan, foto
+  kunjungan, bukti pembayaran, cover artikel)
+* Akun Brevo (untuk kirim email verifikasi/reset password) — kalau `BREVO_API_KEY` kosong,
+  pengiriman email akan gagal (tercatat sebagai `failed` di `email_logs`), endpoint lain
+  tetap berjalan normal
 
 ## 2. Install Dependency
 
@@ -36,10 +49,10 @@ cd backend
 npm install
 ```
 
-**Dependency baru di Chat 2:** `ws` (`@types/ws` untuk dev) — dipakai untuk WebSocket
-`/ws/chat` (Modul 4: Chat Realtime). Tidak ada environment variable baru yang wajib diisi
-untuk modul-modul Chat 2 ini — semuanya memakai konfigurasi yang sudah ada dari Chat 1
-(`DATABASE_URL`, `JWT_ACCESS_SECRET`, `R2_*`, dll).
+**Tidak ada dependency baru di Chat 3** — modul Leads, Article, Notifikasi, Insight, dan
+Audit Log semuanya memakai package yang sudah terpasang sejak Chat 1/2 (`express`, `pg`,
+`ws`, `zod`, dll). WebSocket `/ws/notifications` memakai package `ws` yang sama dengan
+`/ws/chat`.
 
 ## 3. Setup Environment
 
@@ -47,29 +60,37 @@ untuk modul-modul Chat 2 ini — semuanya memakai konfigurasi yang sudah ada dar
 cp .env.example .env
 ```
 
-Lalu isi minimal:
-* `DATABASE_URL` — connection string ke database PostgreSQL kamu, contoh:
-  `postgresql://postgres:password_kamu@localhost:5432/lcs_db`
-* `JWT_ACCESS_SECRET` dan `JWT_EMAIL_SECRET` — isi dengan string acak yang panjang & **berbeda satu sama lain**
-* `APP_BASE_URL` — misal `http://localhost:4000`
-* `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` — untuk pengiriman email
-* `R2_*` — kredensial Cloudflare R2 (dipakai juga oleh foto kendaraan/suku cadang/kunjungan/bukti bayar di Chat 2 ini)
-* `SEED_SUPERADMIN_*` — kredensial akun Super Admin pertama (lihat langkah 5)
+Isi minimal (lihat detail tiap variabel di `.env.example`): `DATABASE_URL`,
+`JWT_ACCESS_SECRET`, `JWT_EMAIL_SECRET`, `APP_BASE_URL`, `BREVO_API_KEY`,
+`BREVO_SENDER_EMAIL`, `R2_*`, `SEED_SUPERADMIN_*`.
+
+**Tidak ada environment variable baru di Chat 3.**
 
 Semua variabel divalidasi otomatis saat server start (`src/config/env.ts`).
 
+> **Catatan (bukan bug baru, sudah ada sejak Chat 1, mohon diperhatikan saat deploy):**
+> `PGSSL` divalidasi dengan `z.coerce.boolean()`, dan `z.coerce.boolean()` bawaan Zod
+> men-coerce STRING APAPUN yang tidak kosong (termasuk literal string `"false"`) menjadi
+> `true` — jadi `PGSSL=false` di `.env` saat ini akan terbaca sebagai `true`. Workaround
+> sementara: jangan set `PGSSL` sama sekali kalau tidak butuh SSL (default `false` akan
+> dipakai), atau set eksplisit hanya kalau butuh `true`. Perbaikan permanen (ganti ke
+> `.transform((v) => v.trim().toLowerCase() === "true")`) belum dilakukan di chat ini
+> karena di luar scope modul yang diminta — silakan konfirmasi kalau mau saya perbaiki di
+> `src/config/env.ts`.
+
 ## 4. Jalankan Migration
 
-Migration untuk **seluruh tabel** modul Chat 2 (`vehicles`, `vehicle_photos`, `spare_parts`,
-`spare_part_photos`, `visit_requests`, `visit_photos`, `conversations`,
-`conversation_participants`, `messages`, `message_reads`, `transactions`) **sudah dibuat di
-Chat 1** bersama seluruh enum-nya — tidak ada migration baru di Chat 2 ini.
+Migration untuk **seluruh tabel MVP** (termasuk `leads`, `articles`, `notifications`,
+`audit_logs`, dan seluruh enum termasuk `notification_type`, `lead_source`,
+`article_status`) **sudah dibuat sejak Chat 1** — **tidak ada migration baru di Chat 3
+ini**. Modul-modul Chat 3 murni menambah layer aplikasi (repository/service/
+controller/routes) di atas skema yang sudah ada.
 
 ```bash
 npm run migrate:up
 ```
 
-Untuk rollback migration terakhir:
+Rollback migration terakhir:
 ```bash
 npm run migrate:down
 ```
@@ -87,8 +108,12 @@ npm run dev
 ```
 
 Server REST berjalan di `http://localhost:4000` (atau sesuai `PORT` di `.env`). Cek
-`GET /health`. WebSocket Chat Realtime berjalan di `ws://localhost:4000/ws/chat` — attach
-ke `http.Server` yang sama dengan Express (bukan port terpisah).
+`GET /health`.
+
+**Dua WebSocket berjalan di `http.Server` yang sama** (bukan port terpisah), dibedakan
+lewat pathname saat event `upgrade`:
+* `ws://localhost:4000/ws/chat` — Chat Realtime (Chat 2)
+* `ws://localhost:4000/ws/notifications` — Notifikasi Realtime (Chat 3, baru)
 
 ## 7. Build & Jalankan (Production)
 
@@ -105,7 +130,7 @@ npm start
 src/
 ├── config/         # env, db pool, logger, r2 client
 ├── db/
-│   ├── migrations/ # DDL berurutan (node-pg-migrate) — semua tabel Chat 1+2 sudah lengkap
+│   ├── migrations/ # DDL berurutan (node-pg-migrate) — semua tabel MVP sudah lengkap sejak Chat 1
 │   └── seed/        # script seed super admin
 ├── modules/
 │   ├── auth/              # register, login, refresh+rotate, verifikasi, reset password
@@ -113,175 +138,250 @@ src/
 │   ├── email/               # sendEmail() terpusat + integrasi Brevo + email_logs
 │   ├── platform-settings/
 │   ├── media/                # upload gambar -> sharp -> WebP -> R2 -> media_assets
-│   ├── audit-log/             # recordAuditLog() + checkCooldown(), dipakai lintas modul
-│   ├── vehicles/               # [BARU] Product Management — Kendaraan
-│   ├── spare-parts/            # [BARU] Product Management — Suku Cadang
-│   ├── visits/                  # [BARU] Inspeksi Dokumen & Kunjungan Fisik
-│   ├── chat/                     # [BARU] Chat Realtime — REST + WebSocket (/ws/chat)
-│   └── transactions/              # [BARU] Transaksi & Payment Manual (Escrow-lite)
+│   ├── audit-log/             # recordAuditLog() + checkCooldown() + [BARU] query endpoints
+│   ├── vehicles/               # Product Management — Kendaraan
+│   ├── spare-parts/            # Product Management — Suku Cadang
+│   ├── visits/                  # Inspeksi Dokumen & Kunjungan Fisik
+│   ├── chat/                     # Chat Realtime — REST + WebSocket (/ws/chat)
+│   ├── transactions/              # Transaksi & Payment Manual (Escrow-lite)
+│   ├── leads/                      # [BARU] Leads System
+│   ├── articles/                    # [BARU] Article Management
+│   ├── notifications/                # [BARU] Notifikasi Realtime — REST + WS (/ws/notifications)
+│   └── insights/                      # [BARU] Tracking Insight
 ├── middlewares/     # authenticate, authorize, validate, rateLimiter, errorHandler
 ├── utils/            # ApiError, apiResponse, asyncHandler, pagination
 ├── app.ts
 └── server.ts
 ```
 
-Konvensi tiap modul: `routes → controller → service (business logic) → repository (SQL)` —
-sama persis dengan modul-modul Chat 1, termasuk pemakaian `ApiError`, `sendSuccess`,
-`asyncHandler`, `parsePagination`/`buildMeta`, `validate` (Zod), `authenticate`/`authorize`,
-dan `recordAuditLog`.
+Konvensi tiap modul tetap sama persis dari Chat 1: `routes → controller → service (business
+logic) → repository (SQL)`, memakai `ApiError`, `sendSuccess`, `asyncHandler`,
+`parsePagination`/`buildMeta`, `validate` (Zod), `authenticate`/`authorize`, dan
+`recordAuditLog`.
 
 ---
 
-## Catatan Keputusan & Asumsi Penting — Chat 2 (mohon direview)
+## Event Notifikasi & Titik Pemicu (Modul 3)
 
-1. **`license_plate` kendaraan TIDAK PERNAH ter-expose di response publik** — serialisasi
-   dipisah eksplisit lewat `toPublicVehicle()` di `vehicles.service.ts` yang strip field
-   ini. Endpoint admin (`GET /api/admin/vehicles`, `GET /api/admin/vehicles/:id`)
-   mengembalikan data lengkap termasuk `license_plate`.
-2. **Endpoint admin (`GET /api/admin/vehicles`, `GET /api/admin/spare-parts`) dipasang di
-   path terpisah** (`/api/admin/vehicles`, bukan sub-path dari `/api/vehicles`), persis
-   sesuai `05-api-endpoints-mvp.md`.
-3. **Upload foto hasil kunjungan: default Admin only** (`VISIT_PHOTO_UPLOAD_ROLES` di
-   `visits.service.ts`), sesuai default sementara di `04-catatan-open-decision.md` §3.
-   Otorisasi granular ini **config-driven di service layer** (bukan hardcode di
-   route/skema) — kalau nanti mau dibuka untuk Customer, tinggal ubah 1 array, tidak perlu
-   ubah skema atau kontrak API.
-4. **Status `visit_requests` TIDAK otomatis mengubah status listing kendaraan** kalau
-   kunjungan gagal terjadwal/dibatalkan — sesuai default di `04-catatan-open-decision.md`
-   §3 & rekomendasi §15 di `05-api-endpoints-mvp.md`. Admin ubah status kendaraan manual
-   kalau perlu.
-5. **Chat — mekanisme assignment Admin: General Queue** (dikonfirmasi sebelum coding).
-   Tidak ada auto-assign saat `POST /api/conversations` dibuat — conversation baru
-   langsung `open` tanpa partisipan admin. Admin manapun bisa melihatnya di daftar
-   (`GET /api/conversations` untuk role admin menampilkan: conversation yang sudah dia
-   ikuti + seluruh conversation `open` yang belum punya partisipan admin sama sekali).
-   Begitu seorang Admin mengirim pesan pertama di suatu conversation (via REST atau WS),
-   dia **otomatis ditambahkan sebagai partisipan** (jadi "assigned").
-6. **WebSocket `/ws/chat` — auth via query param `?token=<access_token>`**, bukan header
-   `Authorization`, karena WebSocket API di browser tidak bisa mengirim custom header saat
-   handshake. Event yang di-emit ke client: `message:new`, `message:read`,
-   `conversation:closed`. Client juga bisa *mengirim* pesan lewat WS dengan payload
-   `{ "type": "message:new", "conversation_id", "content", ... }` atau
-   `{ "type": "message:read", "conversation_id", "up_to_message_id" }` — service yang sama
-   dipakai baik dari REST maupun WS, jadi hasilnya konsisten. Broadcast antar-client
-   memakai in-process `EventEmitter` (`chat.events.ts`) — cukup untuk MVP single-instance;
-   kalau nanti scale-out multi-instance, ini perlu diganti ke sesuatu lintas-proses (mis.
-   Redis pub/sub).
-7. **Alur status transaksi (Escrow-lite) — dikonfirmasi sebelum coding:**
-   ```
-   pending_payment --(Customer upload bukti + Admin verify-payment approved=true)--> funds_held
-   funds_held --(Owner release)--> released_to_seller
-   funds_held --(Customer/Admin dispute)--> disputed
-   disputed --(Owner resolve)--> released_to_seller | refunded | cancelled   (LANGSUNG ke status
-                                                                               final; nilai enum
-                                                                               'resolved' sengaja
-                                                                               tidak dipakai)
-   pending_payment --(Customer atau Admin, sebelum funds_held)--> cancelled
-   ```
-   `approved=true` di `verify-payment` menaikkan status **2 tingkat sekaligus**
-   (`payment_verified` → `funds_held`), dicatat sebagai **1 audit log** dengan metadata
-   `resulting_status`. `approved=false` tidak mengubah status (tetap `pending_payment`,
-   customer perlu upload ulang bukti).
-8. **Audit log wajib di setiap transisi status transaksi** — dilakukan di
-   `transactions.service.ts` menempel langsung di titik transisi (`create_transaction`,
-   `upload_payment_proof`, `verify_payment`, `release_transaction_funds`,
-   `dispute_transaction`, `resolve_transaction_dispute`, `cancel_transaction`), bukan
-   ditambahkan belakangan. Begitu juga di modul lain: `create_vehicle`/`update_vehicle`/
-   `delete_vehicle`, `verify_vehicle_document`, `moderate_visit_photo`, dst.
-9. **`payment_gateway_ref` di tabel `transactions` sengaja tidak pernah diisi/dipakai logic
-   apa pun di modul ini** — reserved murni untuk Fase 2 (Midtrans), sesuai instruksi.
-10. **Refund saat `resolve` dispute bersifat manual** — sistem hanya mencatat status
-    `refunded`, proses transfer balik dana ke pembeli tetap dilakukan Admin/Owner secara
-    manual di luar sistem (WhatsApp/telepon), sesuai `05-api-endpoints-mvp.md` §15 & belum
-    ada keputusan final soal alur refund detail di `04-catatan-open-decision.md` §7.
-11. **Endpoint `POST /api/vehicles/:id/visit-requests`** dipasang sebagai router terpisah
-    (`vehicleVisitRequestsRouter`) tapi tetap di-mount di path `/api/vehicles`, supaya
-    modul `vehicles` dan `visits` tetap terpisah secara kode meski satu prefix URL — tidak
-    ada konflik routing karena pattern path-nya berbeda dari route lain di modul `vehicles`.
+Notifikasi **tidak berdiri sendiri** — setiap baris di tabel `notifications` dipicu dari
+titik transisi di modul lain lewat `createNotificationService()` /
+`createNotificationForManyService()` (`src/modules/notifications/notifications.service.ts`).
+Daftar lengkap titik pemicu yang ditambahkan di chat ini:
 
-Kalau ada dari 11 poin ini yang mau diubah, kabari saya sebelum lanjut ke modul pendukung
-(Leads, Article, Notifikasi, Tracking Insight, Audit Log read) di chat berikutnya.
+| # | Event Pemicu | Dipasang di | Tipe Notifikasi | Penerima |
+|---|---|---|---|---|
+| 1 | Pesan chat baru masuk | `chat/chat.service.ts` → `sendMessageService()` | `chat_message` | Seluruh partisipan conversation SELAIN pengirim |
+| 2 | Jadwal kunjungan dikonfirmasi | `visits/visits.service.ts` → `scheduleVisitRequestService()` | `visit_status` | Customer pemilik visit request |
+| 3 | Kunjungan selesai / dibatalkan | `visits/visits.service.ts` → `updateVisitRequestStatusService()` | `visit_status` | Customer pemilik visit request |
+| 4 | Pembayaran diverifikasi (→ `funds_held`) | `transactions/transactions.service.ts` → `verifyPaymentService()` | `transaction_status` | Buyer (status terverifikasi) **+** seluruh Owner (masuk approval queue) |
+| 5 | Dana dilepas ke penjual | `transactions/transactions.service.ts` → `releaseTransactionService()` | `transaction_status` | Buyer |
+| 6 | Transaksi di-dispute | `transactions/transactions.service.ts` → `disputeTransactionService()` | `transaction_status` | Buyer (kalau bukan dia sendiri yang mengajukan) **+** seluruh Owner |
+| 7 | Dispute diputuskan (released/refunded/cancelled) | `transactions/transactions.service.ts` → `resolveTransactionService()` | `transaction_status` | Buyer |
+| 8 | Transaksi dibatalkan oleh Admin | `transactions/transactions.service.ts` → `cancelTransactionService()` | `transaction_status` | Buyer (kalau bukan dia sendiri yang membatalkan) |
+| 9 | Status dokumen kendaraan berubah | `vehicles/vehicles.service.ts` → `updateDocumentStatusService()` | `document_status` | Customer yang punya `visit_request` aktif (`requested`/`scheduled`) untuk kendaraan tsb |
+
+Setiap trigger memanggil `createNotificationService()` yang: (1) INSERT ke tabel
+`notifications` (riwayat persisten, dipakai oleh `GET /api/notifications` & badge
+unread), dan (2) emit event in-process (`notifications.events.ts`, pola sama dengan
+`chat.events.ts`) yang ditangkap `notifications.ws.ts` untuk push realtime kalau
+penerimanya sedang online. Kalau offline, notifikasi tetap tersimpan dan baru muncul
+saat client fetch `GET /api/notifications` berikutnya.
 
 ---
 
-## Testing Cepat — Chat Realtime via WebSocket (contoh, pakai `wscat`)
+## Perbaikan Audit Log (ditemukan saat audit kode sebelum membangun endpoint query)
+
+Sesuai instruksi, sebelum membangun `GET /api/audit-logs`, dilakukan audit ke seluruh
+service yang sudah ada terhadap daftar wajib di `03-rbac-alur-admin.md` §4. Hasilnya:
+**hampir semua aksi krusial sudah tercatat** (product CRUD, verifikasi dokumen, transaksi,
+moderasi foto kunjungan, platform settings). Satu gap ditemukan dan sudah diperbaiki di
+chat ini:
+
+* **`users/users.service.ts` — `createUserService`, `updateUserService`,
+  `deleteUserService`** (dipakai oleh Super Admin untuk membuat/mengubah role-status/
+  menonaktifkan akun, termasuk akun Admin/Owner lain) **sebelumnya TIDAK memanggil
+  `recordAuditLog`**. Ini krusial karena aksi ini langsung mengubah hak akses user lain.
+  Sudah ditambahkan `action_type`: `create_user`, `update_user`, `deactivate_user`.
+  (`adminResetPasswordService` di file yang sama sudah benar sejak awal.)
+
+Tidak ditemukan gap lain yang wajib menurut daftar `03-rbac-alur-admin.md` §4 (verifikasi
+dokumen produk, perubahan status transaksi, approval/rejection release dana, moderasi foto
+kunjungan, perubahan data produk, perubahan pengaturan sistem Super Admin — semua sudah
+tercatat sejak Chat 1/2).
+
+---
+
+## Catatan "Artikel Terpopuler" (Tracking Insight)
+
+`GET /api/insights/overview` **tidak bisa menghitung "artikel terpopuler" murni dari
+database internal**, karena tracking pageview/traffic ada di GTM/GA4 yang sifatnya
+client-side (di luar scope backend MVP, sesuai catatan di `05-api-endpoints-mvp.md` §11:
+"kecuali nanti dibutuhkan server-side tagging, di luar scope MVP"). Sebagai proxy
+sementara, field `recent_published_articles` mengembalikan artikel published terbaru
+(bukan hasil ranking popularitas sesungguhnya). Kalau nanti butuh angka pageview riil,
+opsinya: (a) tarik data dari GA4 Reporting API di frontend/BFF layer, atau (b) tambah kolom
+`view_count` + endpoint increment di backend (di luar scope MVP saat ini).
+
+---
+
+## Ringkasan Endpoint: Implementasi vs `05-api-endpoints-mvp.md`
+
+Legenda: ✅ = sudah diimplementasikan.
+
+| Section | Endpoint | Status |
+|---|---|---|
+| §1 Auth | Semua 11 endpoint (`register` s/d `PATCH /me/password`) | ✅ (Chat 1) |
+| §2 Vehicles | Semua 11 endpoint | ✅ (Chat 2) |
+| §3 Spare Parts | Semua 9 endpoint | ✅ (Chat 2) |
+| §4 Inspeksi & Kunjungan | Semua 9 endpoint | ✅ (Chat 2) |
+| §5 Chat Realtime | 7 endpoint REST + `WS /ws/chat` | ✅ (Chat 2) |
+| §6 Transaksi | Semua 11 endpoint | ✅ (Chat 2) |
+| §7 Leads | `POST /api/leads`, `GET /api/leads`, `GET /api/leads/:id` | ✅ (Chat 3) |
+| §8 Article | Semua 7 endpoint | ✅ (Chat 3) |
+| §9 Media Library | Semua 4 endpoint | ✅ (Chat 1) |
+| §10 Notifikasi | `GET/PATCH /api/notifications*` + `WS /ws/notifications` | ✅ (Chat 3) |
+| §11 Tracking Insight | `overview`, `leads-report`, `transactions-report` | ✅ (Chat 3) |
+| §12 Audit Log | `GET /api/audit-logs`, `GET /api/audit-logs/:id` | ✅ (Chat 3) |
+| §13 Platform Settings | Semua 4 endpoint | ✅ (Chat 1) |
+| §14 RBAC/User Mgmt | Semua 5 endpoint | ✅ (Chat 1) |
+| §16 (02c) Email Logs | `GET /api/email-logs`, `GET /api/email-logs/usage-today` | ✅ (Chat 1) |
+
+**Seluruh endpoint di `05-api-endpoints-mvp.md` dan `02c-addendum` sudah terimplementasi.**
+Silakan cek ulang terhadap Postman collection (`LCS-Backend.postman_collection.json`) untuk
+verifikasi lapangan sebelum masuk tahap testing/integrasi dengan frontend.
+
+---
+
+## Testing Cepat — Notifikasi Realtime via WebSocket (contoh, pakai `wscat`)
 
 ```bash
 npm install -g wscat
+wscat -c "ws://localhost:4000/ws/notifications?token=<access_token>"
+
+# Server akan push otomatis event seperti ini saat trigger di atas terjadi:
+# {"event":"notification:new","data":{"id":"...","type":"chat_message","title":"Pesan baru masuk",...}}
+```
+
+## Testing Cepat — Chat Realtime via WebSocket (dari Chat 2, tetap berlaku)
+
+```bash
 wscat -c "ws://localhost:4000/ws/chat?token=<access_token>"
-
-# Setelah konek, kirim pesan (format JSON):
 {"type":"message:new","conversation_id":"<uuid>","content":"Halo, saya berminat dengan mobil ini"}
-
-# Tandai pesan sudah dibaca:
 {"type":"message:read","conversation_id":"<uuid>","up_to_message_id":"<uuid>"}
 ```
 
 ---
 
+## Catatan Keputusan & Asumsi Penting — Chat 3 (mohon direview)
+
+1. **Slug artikel di-generate otomatis dari title** kalau tidak dikirim eksplisit di
+   `POST`/`PUT /api/articles` (mendukung requirement SEO-friendly). Kalau slug bentrok
+   dengan artikel lain, otomatis ditambah suffix angka (`-2`, `-3`, dst) — tidak pernah
+   gagal request karena slug duplikat.
+2. **Endpoint admin artikel mengikuti pola vehicles**: CRUD (`POST/PUT/PATCH status/DELETE
+   /api/articles`) tetap di path utama `/api/articles`, hanya listing "termasuk draft"
+   yang dipisah ke `/api/admin/articles` — persis strukturnya sama dengan modul `vehicles`.
+3. **`GET /api/leads`, `GET /api/leads/:id`** dibuka untuk role `owner`, `admin`, DAN
+   `super_admin` (dokumen menyebut "Owner, Admin" — `super_admin` ditambahkan konsisten
+   dengan pola modul lain yang selalu memberi Super Admin akses penuh sebagai hak absolut,
+   sesuai `03-rbac-alur-admin.md` §1.1).
+4. **`POST /api/leads` sengaja TIDAK memanggil `recordAuditLog`** — endpoint ini Public
+   (diisi Customer/pengunjung biasa), dan `03-rbac-alur-admin.md` §4 hanya mewajibkan
+   pencatatan aksi staff (Admin/Owner/Super Admin), bukan aktivitas publik biasa.
+5. **WebSocket `/ws/notifications` murni satu arah** (server → client push
+   `notification:new`) — tidak ada event yang diterima dari client seperti di `/ws/chat`.
+   Auth memakai pola query param `?token=` yang sama.
+6. **Notifikasi ke banyak penerima sekaligus** (mis. seluruh Owner saat dispute) memakai
+   `createNotificationForManyService()`, yang meng-insert 1 baris `notifications` PER user
+   penerima (bukan 1 baris shared) — supaya status `is_read` per-user independen, konsisten
+   dengan filosofi `message_reads` di modul chat.
+7. **Notifikasi `document_status`** ditujukan ke customer yang punya `visit_request` aktif
+   untuk kendaraan terkait (bukan ke seluruh customer) — interpretasi paling masuk akal
+   karena tidak ada mekanisme wishlist/follow produk di skema MVP. Kalau nanti ada fitur
+   Wishlist (fitur "menyusul" di `01-spesifikasi-fitur-mvp.md` §1.C) diaktifkan, titik
+   pemicu ini sebaiknya diperluas untuk juga notify user yang wishlist kendaraan tsb.
+8. **"Artikel terpopuler" di Tracking Insight** memakai proxy "artikel published terbaru"
+   — lihat penjelasan detail di bagian tersendiri di atas.
+9. **Audit Log query endpoint default Super Admin only** — sesuai default sementara di
+   `04-catatan-open-decision.md` §6 (akses Owner untuk transaksi tanggung jawabnya belum
+   diputuskan). Query sudah mendukung filter `target_entity` sehingga gampang dibuka
+   parsial untuk Owner nanti tanpa ubah kontrak API.
+10. **Gap audit log di `users.service.ts` sudah diperbaiki** — lihat bagian "Perbaikan
+    Audit Log" di atas.
+
+Kalau ada dari 10 poin ini yang mau diubah, kabari sebelum lanjut ke tahap
+testing/integrasi frontend.
+
+---
+
+## Catatan Keputusan & Asumsi — Chat 2 (dipertahankan, sudah pernah direview)
+
+1. `license_plate` kendaraan TIDAK PERNAH ter-expose di response publik.
+2. Endpoint admin (`GET /api/admin/vehicles`, `GET /api/admin/spare-parts`) dipasang di
+   path terpisah, sesuai `05-api-endpoints-mvp.md`.
+3. Upload foto hasil kunjungan: default Admin only (`VISIT_PHOTO_UPLOAD_ROLES`).
+4. Status `visit_requests` TIDAK otomatis mengubah status listing kendaraan.
+5. Chat — mekanisme assignment Admin: General Queue (tanpa auto-assign).
+6. WebSocket `/ws/chat` — auth via query param `?token=`, broadcast via `chat.events.ts`.
+7. Alur status transaksi (Escrow-lite) — lihat komentar di `transactions.service.ts`.
+8. Audit log wajib di setiap transisi status transaksi.
+9. `payment_gateway_ref` sengaja tidak pernah diisi/dipakai — reserved Fase 2.
+10. Refund saat `resolve` dispute bersifat manual (status tercatat, transfer di luar sistem).
+11. `POST /api/vehicles/:id/visit-requests` dipasang sebagai router terpisah tapi tetap
+    di-mount di path `/api/vehicles`.
+
 ## Catatan Keputusan & Asumsi — Chat 1 (dipertahankan, sudah pernah direview)
 
-1. **Login diblokir sampai email terverifikasi** (`EMAIL_NOT_VERIFIED`, HTTP 403).
-2. **`registration_open` default `false`** saat migration awal.
-3. **Rate limiting** sudah dipasang di `login`, `forgot-password`, `resend-verification`,
-   plus limiter global ringan untuk seluruh API.
-4. **`POST /api/auth/logout`** — `refresh_token` di body bersifat opsional (device
-   tunggal vs semua device).
-5. **Endpoint Media Library** (`POST /api/media`) dibatasi role `admin`, `super_admin`,
-   `customer`.
-6. **Kuota Media Library 1GB** dicek sebelum setiap upload baru (`QUOTA_EXCEEDED` kalau
-   terlampaui) — dipakai bersama oleh semua modul yang upload gambar (produk, kunjungan,
-   bukti pembayaran).
-7. **Seed Super Admin** otomatis mengisi `email_verified_at`.
+1. Login diblokir sampai email terverifikasi (`EMAIL_NOT_VERIFIED`, HTTP 403).
+2. `registration_open` default `false` saat migration awal.
+3. Rate limiting di `login`, `forgot-password`, `resend-verification`, + limiter global.
+4. `POST /api/auth/logout` — `refresh_token` di body opsional.
+5. `POST /api/media` dibatasi role `admin`, `super_admin`, `customer`.
+6. Kuota Media Library 1GB dicek sebelum setiap upload baru.
+7. Seed Super Admin otomatis mengisi `email_verified_at`.
 
 ---
 
 ## Testing Cepat (manual, contoh pakai curl)
 
 ```bash
-# Register
-curl -X POST http://localhost:4000/api/auth/register \
+# Submit lead dari Contact Form (Public)
+curl -X POST http://localhost:4000/api/leads \
   -H "Content-Type: application/json" \
-  -d '{"name":"Budi","email":"budi@example.com","password":"password123"}'
+  -d '{"source":"contact_form","name":"Budi","phone":"081234567890","message":"Tanya mobil Avanza"}'
 
-# Login sebagai Super Admin
-curl -X POST http://localhost:4000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"<SEED_SUPERADMIN_EMAIL>","password":"<SEED_SUPERADMIN_PASSWORD>"}'
-
-# Buka registrasi
-curl -X PATCH http://localhost:4000/api/settings/registration-toggle \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <access_token>" \
-  -d '{"registration_open": true}'
-
-# Buat listing kendaraan (Admin)
-curl -X POST http://localhost:4000/api/vehicles \
+# Buat artikel (Admin)
+curl -X POST http://localhost:4000/api/articles \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <admin_access_token>" \
-  -d '{"brand":"Toyota","model":"Avanza","year":2019,"mileage":45000,"price":150000000,"location":"Bandung"}'
+  -d '{"title":"Tips Merawat Rem Motor","content":"...","category":"maintenance"}'
+
+# Lihat notifikasi milik sendiri
+curl http://localhost:4000/api/notifications \
+  -H "Authorization: Bearer <access_token>"
+
+# Dashboard insight (Owner/Super Admin)
+curl http://localhost:4000/api/insights/overview \
+  -H "Authorization: Bearer <owner_access_token>"
+
+# Audit log (Super Admin)
+curl "http://localhost:4000/api/audit-logs?target_entity=transactions" \
+  -H "Authorization: Bearer <superadmin_access_token>"
 ```
 
 Lihat Postman collection (`LCS-Backend.postman_collection.json`) untuk contoh lengkap
-seluruh endpoint Chat 1 + Chat 2, termasuk skrip test otomatis yang menyimpan id/token ke
-environment variable untuk endpoint berikutnya.
+seluruh endpoint MVP (Chat 1 + 2 + 3), termasuk skrip test otomatis yang menyimpan id/token
+ke environment variable untuk endpoint berikutnya.
 
 ---
 
-## Yang Belum Termasuk di Chat Ini (menyusul di chat berikutnya)
+## Status: MVP Backend Selesai
 
-* Leads System
-* Article Management
-* Notifikasi Realtime (WebSocket `/ws/notifications` — tabel `notifications` sudah ada
-  dari migration Chat 1, tinggal dibangun endpoint & broadcaster-nya, polanya bisa contek
-  `chat.ws.ts`)
-* Tracking Insight (`GET /api/insights/*`)
-* Audit Log read endpoints (`GET /api/audit-logs`) — tabel & fungsi tulis
-  (`recordAuditLog`) sudah dipakai luas oleh modul-modul Chat 2 ini, endpoint baca akan
-  ditambahkan bersama modul RBAC lanjutan
-
-Kode dari Chat 1 + Chat 2 sudah menyediakan fondasi lengkap yang dipakai ulang oleh semua
-modul di atas: `authenticate`/`authorize` middleware, `sendSuccess`/`ApiError`,
-`recordAuditLog`, `uploadImage`, koneksi DB, dan pola event-bus in-process
-(`chat.events.ts`, bisa dicontek untuk modul Notifikasi) — jadi modul berikutnya tinggal
-nambah folder baru di `src/modules/` mengikuti pola yang sama.
+Seluruh 5 modul pendukung di chat ini melengkapi cakupan `05-api-endpoints-mvp.md`.
+Langkah berikutnya yang disarankan (di luar scope backend, sesuai roadmap
+`00-overview-strategi-produk-versi-cepat.md`): integrasi dengan frontend (Google AI
+Studio), testing end-to-end via Postman collection, lalu persiapan deployment (VPS +
+Docker, sesuai `spesifikasi_sistem_jual_beli_kendaraan.md` §6 — catatan: dokumen tsb
+menyebut Docker Compose, sedangkan kesepakatan teknis terbaru di memory project TIDAK
+memakai Docker Compose untuk lokal, mohon dikonfirmasi ulang strategi deployment VPS-nya
+sebelum production).

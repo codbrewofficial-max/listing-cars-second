@@ -40,6 +40,8 @@ export async function createUserService(params: {
   password: string;
   role: UserRole;
   phone?: string;
+  actorId: string;
+  actorRole: string;
 }) {
   const existing = await findUserByEmail(params.email);
   if (existing) throw ApiError.conflict("Email sudah terdaftar", "EMAIL_ALREADY_REGISTERED");
@@ -52,22 +54,56 @@ export async function createUserService(params: {
     phone: params.phone ?? null,
     role: params.role,
   });
+
+  await recordAuditLog({
+    actorId: params.actorId,
+    actorRole: params.actorRole,
+    actionType: "create_user",
+    targetEntity: "users",
+    targetId: user.id,
+    metadata: { email: user.email, role: user.role },
+  });
+
   return toPublicUser(user);
 }
 
 export async function updateUserService(
   id: string,
-  fields: { role?: UserRole; is_active?: boolean }
+  fields: { role?: UserRole; is_active?: boolean },
+  actor: { id: string; role: string }
 ) {
+  const existing = await findUserById(id);
+  if (!existing) throw ApiError.notFound("User tidak ditemukan");
+
   const user = await updateUserRoleStatus(id, fields);
   if (!user) throw ApiError.notFound("User tidak ditemukan");
+
+  await recordAuditLog({
+    actorId: actor.id,
+    actorRole: actor.role,
+    actionType: "update_user",
+    targetEntity: "users",
+    targetId: id,
+    metadata: { from: { role: existing.role, is_active: existing.is_active }, to: fields },
+  });
+
   return toPublicUser(user);
 }
 
-export async function deleteUserService(id: string) {
+export async function deleteUserService(id: string, actor: { id: string; role: string }) {
   const user = await findUserById(id);
   if (!user) throw ApiError.notFound("User tidak ditemukan");
   await softDeleteUser(id);
+
+  await recordAuditLog({
+    actorId: actor.id,
+    actorRole: actor.role,
+    actionType: "deactivate_user",
+    targetEntity: "users",
+    targetId: id,
+    metadata: { email: user.email },
+  });
+
   return { message: "User berhasil dinonaktifkan" };
 }
 

@@ -30,17 +30,17 @@ export const getUserHandler = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const createUserHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = await createUserService(req.body);
+  const user = await createUserService({ ...req.body, actorId: req.user!.id, actorRole: req.user!.role });
   return sendSuccess(res, { user }, 201);
 });
 
 export const updateUserHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = await updateUserService(req.params.id, req.body);
+  const user = await updateUserService(req.params.id, req.body, { id: req.user!.id, role: req.user!.role });
   return sendSuccess(res, { user });
 });
 
 export const deleteUserHandler = asyncHandler(async (req: Request, res: Response) => {
-  const result = await deleteUserService(req.params.id);
+  const result = await deleteUserService(req.params.id, { id: req.user!.id, role: req.user!.role });
   return sendSuccess(res, result);
 });
 

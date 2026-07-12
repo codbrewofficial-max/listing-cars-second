@@ -8,11 +8,7 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default("*"),
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL wajib diisi"),
-  PGSSL: z
-    .string()
-    .optional()
-    .default("false")
-    .transform((v) => v.trim().toLowerCase() === "true"),
+  PGSSL: z.coerce.boolean().default(false),
 
   JWT_ACCESS_SECRET: z.string().min(10),
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),

@@ -38,7 +38,7 @@ export async function createUser(params: {
 }): Promise<UserRow> {
   const { rows } = await query<UserRow>(
     `INSERT INTO users (name, email, password_hash, phone, role, email_verified_at)
-     VALUES ($1, $2, $3, $4, COALESCE($5, 'customer')::user_role, now())
+     VALUES ($1, $2, $3, $4, COALESCE($5, 'customer')::user_role, now)
      RETURNING *`,
     [params.name, params.email.toLowerCase(), params.passwordHash, params.phone ?? null, params.role ?? null]
   );

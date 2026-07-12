@@ -1,6 +1,8 @@
 import { ApiError } from "../../utils/ApiError";
 import { recordAuditLog } from "../audit-log/audit-log.service";
 import { findMediaAssetById } from "../media/media.repository";
+import { createNotificationService } from "../notifications/notifications.service";
+import { listDistinctActiveCustomerIdsForVehicle } from "../visits/visits.repository";
 import {
   deleteVehicle,
   deleteVehiclePhoto,
@@ -197,6 +199,7 @@ export async function updateDocumentStatusService(params: {
     verifiedBy: params.actor.id,
     verificationChecklist: params.verificationChecklist,
   });
+  if (!vehicle) throw ApiError.notFound("Kendaraan tidak ditemukan");
 
   await recordAuditLog({
     actorId: params.actor.id,
@@ -210,6 +213,31 @@ export async function updateDocumentStatusService(params: {
       has_checklist: !!params.verificationChecklist,
     },
   });
+
+  // Trigger notifikasi (Modul 3): beri tahu customer yang punya visit_request aktif
+  // (requested/scheduled) untuk kendaraan ini, karena status dokumen relevan buat mereka
+  // sebelum memutuskan lanjut kunjungan/transaksi.
+  const interestedCustomerIds = await listDistinctActiveCustomerIdsForVehicle(params.id);
+  if (interestedCustomerIds.length > 0) {
+    const label =
+      params.documentStatus === "verified"
+        ? "Dokumen kendaraan sudah terverifikasi ✓"
+        : params.documentStatus === "rejected"
+        ? "Dokumen kendaraan ditolak"
+        : "Status dokumen kendaraan diperbarui";
+    await Promise.all(
+      interestedCustomerIds.map((userId) =>
+        createNotificationService({
+          userId,
+          type: "document_status",
+          title: label,
+          body: `${vehicle.brand} ${vehicle.model} yang Anda minati.`,
+          relatedEntity: "vehicles",
+          relatedId: params.id,
+        })
+      )
+    );
+  }
 
   return vehicle;
 }

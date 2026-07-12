@@ -1,4 +1,5 @@
-import { insertAuditLog, findLatestAuditLog } from "./audit-log.repository";
+import { insertAuditLog, findLatestAuditLog, listAuditLogs, findAuditLogById } from "./audit-log.repository";
+import { ApiError } from "../../utils/ApiError";
 
 /**
  * Helper terpusat untuk mencatat aksi krusial ke audit_logs.
@@ -43,4 +44,24 @@ export async function checkCooldown(params: {
     return { blocked: true, retryAt: new Date(lastTime + params.cooldownMs) };
   }
   return { blocked: false };
+}
+
+// ---------- Query (GET /api/audit-logs) — Modul 5, 05-api-endpoints-mvp.md §12 ----------
+
+export async function listAuditLogsService(filters: {
+  actorId?: string;
+  targetEntity?: string;
+  targetId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  limit: number;
+  offset: number;
+}) {
+  return listAuditLogs(filters);
+}
+
+export async function getAuditLogDetailService(id: string) {
+  const log = await findAuditLogById(id);
+  if (!log) throw ApiError.notFound("Audit log tidak ditemukan");
+  return log;
 }

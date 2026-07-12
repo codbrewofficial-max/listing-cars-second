@@ -152,6 +152,20 @@ export async function findVisitPhotoById(photoId: string): Promise<VisitPhotoRow
   return rows[0] ?? null;
 }
 
+/**
+ * Dipakai oleh trigger notifikasi document_status (lihat vehicles.service.ts):
+ * cari customer yang punya visit_request aktif (requested/scheduled) untuk kendaraan
+ * tertentu, supaya bisa diberi tahu saat status dokumen kendaraan tersebut berubah.
+ */
+export async function listDistinctActiveCustomerIdsForVehicle(vehicleId: string): Promise<string[]> {
+  const { rows } = await query<{ customer_id: string }>(
+    `SELECT DISTINCT customer_id FROM visit_requests
+     WHERE vehicle_id = $1 AND status IN ('requested', 'scheduled')`,
+    [vehicleId]
+  );
+  return rows.map((r) => r.customer_id);
+}
+
 export async function moderateVisitPhoto(params: {
   photoId: string;
   moderationStatus: string;
