@@ -33,10 +33,13 @@ COPY package.json package-lock.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
-# src/db dibawa utuh (bukan hasil compile) karena:
+# src dibawa UTUH (bukan hasil compile), bukan cuma src/db, karena:
 # - migrate:up membaca file .js di src/db/migrations langsung (lihat package.json)
-# - seed:superadmin menjalankan src/db/seed/superadmin.ts lewat tsx
-COPY --from=builder /app/src/db ./src/db
+# - seed:superadmin menjalankan src/db/seed/superadmin.ts lewat tsx, dan file itu
+#   mengimpor ../../config/db, ../../config/env, ../../config/logger — jadi
+#   seluruh src/config (dan folder lain yang mungkin di-import seed/skrip lain
+#   di masa depan) harus ikut, tidak cukup cuma src/db saja.
+COPY --from=builder /app/src ./src
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh && \
