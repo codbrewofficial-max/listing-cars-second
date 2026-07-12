@@ -2,3 +2,4 @@ docs
 prompt
 apps/postman
 .env
+.env.example.*
