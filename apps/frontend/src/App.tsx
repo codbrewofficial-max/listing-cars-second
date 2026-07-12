@@ -11,6 +11,8 @@ import { SparePartDetail } from './pages/SparePartDetail';
 import { Articles } from './pages/Articles';
 import { ArticleDetail } from './pages/ArticleDetail';
 import { Auth } from './pages/Auth';
+import { VerifyEmail } from './pages/VerifyEmail';
+import { ResetPassword } from './pages/ResetPassword';
 import { DashboardSuperAdmin } from './pages/DashboardSuperAdmin';
 import { DashboardOwner } from './pages/DashboardOwner';
 import { DashboardAdminSistem } from './pages/DashboardAdminSistem';
@@ -40,6 +42,8 @@ export default function App() {
             
             {/* Authentication Flow */}
             <Route path="/auth" element={<Auth />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />  
+            <Route path="/reset-password" element={<ResetPassword />} />
             
             {/* Dashboards Roles */}
             <Route path="/dashboard/super-admin" element={

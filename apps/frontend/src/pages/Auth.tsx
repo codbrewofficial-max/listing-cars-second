@@ -11,7 +11,6 @@ export const Auth: React.FC = () => {
   const { registrationOpen } = useAppState();
 
   const redirectPath = searchParams.get('redirect') || '/';
-  const verifyToken = searchParams.get('verify_token');
 
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   
@@ -38,27 +37,10 @@ export const Auth: React.FC = () => {
 
   // If already authenticated, redirect
   useEffect(() => {
-    if (isAuthenticated && !verifyToken) {
+    if (isAuthenticated) {
       navigate(redirectPath);
     }
-  }, [isAuthenticated, navigate, redirectPath, verifyToken]);
-
-  // Handle auto email verification if token present
-  useEffect(() => {
-    if (verifyToken) {
-      const runVerify = async () => {
-        setIsLoadingVerify(true);
-        const ok = await verifyEmail(verifyToken);
-        if (ok) {
-          setVerifySuccess(true);
-        } else {
-          setVerifyError(true);
-        }
-        setIsLoadingVerify(false);
-      };
-      runVerify();
-    }
-  }, [verifyToken]);
+  }, [isAuthenticated, navigate, redirectPath]);
 
   const [isLoadingVerify, setIsLoadingVerify] = useState(false);
   const [verifySuccess, setVerifySuccess] = useState(false);
@@ -96,6 +78,10 @@ export const Auth: React.FC = () => {
       const res = await login(loginEmail, loginPassword);
       if (res.success) {
         navigate(redirectPath);
+      } else if (res.error?.code === 'EMAIL_NOT_VERIFIED') {
+        // [BARU] Jangan cuma tampilkan pesan error — arahkan langsung ke
+        // halaman verifikasi/resend, lengkap dengan email yang tadi dipakai login.
+        navigate(`/verify-email?email=${encodeURIComponent(loginEmail)}`);
       } else {
         setErrorMsg(res.error?.message || 'Email atau sandi salah.');
       }
@@ -174,52 +160,6 @@ export const Auth: React.FC = () => {
       setIsSubmitting(false);
     }
   };
-
-  // Render Email Verification status
-  if (verifyToken) {
-    return (
-      <div className="max-w-md mx-auto px-4 py-20 text-center space-y-6">
-        <div className="bg-white rounded-3xl border border-slate-100 p-8 shadow-xl space-y-6">
-          <h2 className="font-display font-bold text-2xl text-slate-900 tracking-tight">Verifikasi Email Anda</h2>
-          
-          {isLoadingVerify ? (
-            <p className="text-slate-500 text-sm">Menghubungkan ke server untuk verifikasi...</p>
-          ) : verifySuccess ? (
-            <div className="space-y-4">
-              <div className="w-12 h-12 bg-green-50 border border-green-100 rounded-full flex items-center justify-center mx-auto">
-                <Check className="w-6 h-6 text-green-600" />
-              </div>
-              <p className="text-sm font-semibold text-green-800">Email Berhasil Diverifikasi ✓</p>
-              <p className="text-xs text-slate-500">Anda sekarang sudah dapat melakukan login dan bertransaksi secara aman.</p>
-              <button
-                onClick={() => {
-                  setMode('login');
-                  navigate('/auth');
-                }}
-                className="w-full py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-md"
-              >
-                Ke Halaman Login
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="w-12 h-12 bg-red-50 border border-red-100 rounded-full flex items-center justify-center mx-auto">
-                <AlertTriangle className="w-6 h-6 text-red-600" />
-              </div>
-              <p className="text-sm font-semibold text-red-800">Verifikasi Gagal / Kadaluarsa</p>
-              <p className="text-xs text-slate-500">Tautan verifikasi salah atau sudah digunakan sebelumnya.</p>
-              <button
-                onClick={() => navigate('/auth')}
-                className="w-full py-2.5 bg-slate-100 text-slate-800 rounded-xl font-bold text-sm border border-slate-200"
-              >
-                Kembali ke Form Login
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-md mx-auto px-4 py-16">

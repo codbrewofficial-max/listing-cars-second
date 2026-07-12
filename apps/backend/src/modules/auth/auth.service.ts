@@ -25,10 +25,10 @@ import { resetPasswordEmailTemplate, verificationEmailTemplate } from "../email/
 const BCRYPT_ROUNDS = 10;
 
 function buildVerifyUrl(token: string) {
-  return `${env.APP_BASE_URL}/verify-email?token=${token}`;
+  return `${env.FRONTEND_BASE_URL}/verify-email?token=${token}`;
 }
 function buildResetUrl(token: string) {
-  return `${env.APP_BASE_URL}/reset-password?token=${token}`;
+  return `${env.FRONTEND_BASE_URL}/reset-password?token=${token}`;
 }
 
 // ---------- Register ----------
