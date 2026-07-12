@@ -57,11 +57,48 @@ const useRealApi = () => {
   return !!REAL_API_URL;
 };
 
-// Helper to make fetch requests with auth header
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const rToken = getRefreshToken();
+    if (!rToken) return null;
+
+    try {
+      const refreshRes = await fetch(`${REAL_API_URL}/api/auth/refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rToken })
+      });
+
+      if (!refreshRes.ok) return null;
+
+      const body = await refreshRes.json();
+      const newAccessToken = body?.data?.access_token;   // <- fix: sebelumnya data.access_token (bug)
+      const newRefreshToken = body?.data?.refresh_token; // <- fix: token rotasi kini disimpan
+
+      if (!newAccessToken) return null;
+
+      setAccessToken(newAccessToken);
+      if (newRefreshToken) setRefreshToken(newRefreshToken);
+      return newAccessToken;
+    } catch (e) {
+      console.error('Failed to auto-refresh token', e);
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
 async function request(path: string, options: RequestInit = {}) {
   const url = `${REAL_API_URL}${path}`;
   const headers = new Headers(options.headers || {});
-  
+
   if (accessToken) {
     headers.set('Authorization', `Bearer ${accessToken}`);
   }
@@ -70,32 +107,13 @@ async function request(path: string, options: RequestInit = {}) {
   const res = await fetch(url, { ...options, headers });
 
   if (res.status === 401) {
-    // Attempt token refresh
-    const rToken = getRefreshToken();
-    if (rToken) {
-      try {
-        const refreshRes = await fetch(`${REAL_API_URL}/api/auth/refresh-token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: rToken })
-        });
-        
-        if (refreshRes.ok) {
-          const data = await refreshRes.json();
-          // Backend returns { access_token }
-          if (data.access_token) {
-            setAccessToken(data.access_token);
-            // Retry original request with new token
-            headers.set('Authorization', `Bearer ${data.access_token}`);
-            const retryRes = await fetch(url, { ...options, headers });
-            return retryRes;
-          }
-        }
-      } catch (e) {
-        console.error('Failed to auto-refresh token', e);
-      }
+    const newAccessToken = await refreshAccessToken();
+
+    if (newAccessToken) {
+      headers.set('Authorization', `Bearer ${newAccessToken}`);
+      return fetch(url, { ...options, headers });
     }
-    // Logout if refresh fails or no refresh token
+
     setAccessToken(null);
     setRefreshToken(null);
     setStoredUser(null);
