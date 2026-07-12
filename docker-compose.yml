@@ -37,14 +37,14 @@ services:
         condition: service_healthy
     networks:
       - lcs_internal
-      - nginx_proxy_manager-network
+      - nginx-proxy-manager_default
     # Sengaja TIDAK publish port ke host (misal "4000:4000") — akses ke backend
     # hanya lewat Nginx Proxy Manager via docker network, bukan langsung ke VPS.
 
 networks:
   lcs_internal:
     driver: bridge
-  nginx_proxy_manager-network:
+  nginx-proxy-manager_default:
     external: true
 
 volumes:
