@@ -36,11 +36,25 @@ export async function createUser(params: {
   phone?: string | null;
   role?: UserRole;
 }): Promise<UserRow> {
+  // 1. Tentukan nilai role final yang akan dimasukkan ke database terlebih dahulu
+  const finalRole = params.role || 'customer';
+
+  // 2. Cek apakah role tersebut berhak langsung terverifikasi otomatis (admin/super_admin)
+  const isAutoVerified = finalRole === 'admin' || finalRole === 'super_admin';
+  const emailVerifiedAt = isAutoVerified ? new Date() : null;
+
   const { rows } = await query<UserRow>(
     `INSERT INTO users (name, email, password_hash, phone, role, email_verified_at)
-     VALUES ($1, $2, $3, $4, COALESCE($5, 'customer')::user_role, now)
+     VALUES ($1, $2, $3, $4, $5::user_role, $6)
      RETURNING *`,
-    [params.name, params.email.toLowerCase(), params.passwordHash, params.phone ?? null, params.role ?? null]
+    [
+      params.name, 
+      params.email.toLowerCase(), 
+      params.passwordHash, 
+      params.phone ?? null, 
+      finalRole,          // Menggunakan finalRole yang sudah dipastikan string-nya
+      emailVerifiedAt     // Bernilai Date jam sekarang untuk admin, atau null untuk register biasa (customer)
+    ]
   );
   return rows[0];
 }
