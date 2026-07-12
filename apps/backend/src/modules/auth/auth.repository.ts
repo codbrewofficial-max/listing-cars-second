@@ -37,8 +37,8 @@ export async function createUser(params: {
   role?: UserRole;
 }): Promise<UserRow> {
   const { rows } = await query<UserRow>(
-    `INSERT INTO users (name, email, password_hash, phone, role)
-     VALUES ($1, $2, $3, $4, COALESCE($5, 'customer'))
+    `INSERT INTO users (name, email, password_hash, phone, role, email_verified_at)
+     VALUES ($1, $2, $3, $4, COALESCE($5, 'customer')::user_role, now())
      RETURNING *`,
     [params.name, params.email.toLowerCase(), params.passwordHash, params.phone ?? null, params.role ?? null]
   );
@@ -90,7 +90,7 @@ export async function updateUserRoleStatus(
   let idx = 1;
 
   if (fields.role !== undefined) {
-    sets.push(`role = $${idx++}`);
+    sets.push(`role = $${idx++}::user_role`);
     values.push(fields.role);
   }
   if (fields.is_active !== undefined) {
