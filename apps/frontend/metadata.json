@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Jual Beli Kendaraan Second dan Suku Cadang",
+  "description": "Frontend MVP untuk Sistem Jual Beli Kendaraan Second dan Suku Cadang dengan Dashboard Multi-Role, Katalog Produk, Chat Realtime, dan Pengelolaan Leads.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
