@@ -1,0 +1,51 @@
+# =========================================================
+# docker-compose.yml — LCS Backend + PostgreSQL
+# Diletakkan di ROOT repo (sejajar folder apps/).
+# Terhubung ke network Nginx Proxy Manager yang sudah ada di VPS
+# supaya NPM bisa reverse-proxy ke container backend ini.
+# =========================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lcs_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - lcs_postgres_data:/var/lib/postgresql/data
+    networks:
+      - lcs_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: lcs_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lcs_internal
+      - nginx-proxy-manager_default
+    # Sengaja TIDAK publish port ke host (misal "4000:4000") — akses ke backend
+    # hanya lewat Nginx Proxy Manager via docker network, bukan langsung ke VPS.
+
+networks:
+  lcs_internal:
+    driver: bridge
+  nginx-proxy-manager_default:
+    external: true
+
+volumes:
+  lcs_postgres_data:
